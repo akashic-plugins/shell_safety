@@ -27,7 +27,7 @@ PACKAGE_WRITE_OPTIONS = {
 
 class ShellSafety(Plugin):
     name = "shell_safety"
-    version = "0.1.0"
+    version = "1.0.0"
     desc = "阻止 shell 工具执行容易卡住的交互式命令"
 
     @on_tool_pre(tool_name="shell")

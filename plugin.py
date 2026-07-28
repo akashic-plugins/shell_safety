@@ -26,6 +26,7 @@ PACKAGE_WRITE_OPTIONS = {
 
 
 class ShellSafety(Plugin):
+    api_version = 2
     name = "shell_safety"
     version = "1.0.0"
     desc = "阻止 shell 工具执行容易卡住的交互式命令"

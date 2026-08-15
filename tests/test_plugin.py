@@ -52,6 +52,29 @@ def test_blocks_system_editor() -> None:
 def test_allows_non_interactive_write() -> None:
     reason = shell_safety.deny_reason("sudo -n pacman -Syu --noconfirm")
     assert reason == ""
+    assert shell_safety.deny_reason("sudo -nE pacman -Syu --noconfirm") == ""
+    assert (
+        shell_safety.deny_reason("sudo -nuroot pacman -Syu --noconfirm") == ""
+    )
+    assert (
+        shell_safety.deny_reason(
+            "sudo -n --preserve-env=HOME pacman -Syu --noconfirm"
+        )
+        == ""
+    )
+
+
+def test_sudo_option_value_containing_n_is_not_non_interactive() -> None:
+    reason = shell_safety.deny_reason("sudo -unroot pacman -Syu --noconfirm")
+    assert "sudo -n" in reason
+
+
+@pytest.mark.parametrize("mode_flag", ["-e", "-l", "-s", "-i", "-v", "-h"])
+def test_sudo_mode_flag_is_denied_after_non_interactive(
+    mode_flag: str,
+) -> None:
+    reason = shell_safety.deny_reason(f"sudo -n {mode_flag} rm /tmp/a.txt")
+    assert "不作为普通命令执行" in reason
 
 
 def test_malformed_shell_is_left_to_shell_boundary() -> None:

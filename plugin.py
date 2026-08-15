@@ -22,6 +22,33 @@ PACKAGE_WRITE_OPTIONS = {
     "--upgrade",
     "--sysupgrade",
 }
+_SUDO_SHORT_OPTIONS_WITH_VALUE = frozenset(
+    {"u", "g", "p", "C", "D", "R", "T", "h"}
+)
+_SUDO_LONG_OPTIONS_WITH_VALUE = frozenset(
+    {
+        "--user",
+        "--group",
+        "--prompt",
+        "--close-from",
+        "--chdir",
+        "--chroot",
+        "--command-timeout",
+        "--host",
+    }
+)
+_SUDO_MODE_SHORT_FLAGS = frozenset({"e", "l", "s", "i", "v", "h", "V"})
+_SUDO_MODE_LONG_FLAGS = frozenset(
+    {
+        "--edit",
+        "--list",
+        "--shell",
+        "--login",
+        "--validate",
+        "--help",
+        "--version",
+    }
+)
 
 api_version = 3
 name = "shell_safety"
@@ -58,8 +85,9 @@ def deny_reason(command: str) -> str:
     editor = _find_interactive_command(tokens)
     if editor:
         return f"shell_safety 拦截：{editor} 会打开交互式界面，请改用非交互命令。"
-    if _sudo_needs_password(tokens):
-        return "shell_safety 拦截：sudo 可能等待密码，请改用 sudo -n，让它在没有缓存时立即失败。"
+    sudo_issue = _sudo_issue(tokens)
+    if sudo_issue:
+        return sudo_issue
     package_manager = _find_interactive_package_command(tokens)
     if package_manager:
         return f"shell_safety 拦截：{package_manager} 写操作需要加 --noconfirm，避免卡在确认提示。"
@@ -76,34 +104,55 @@ def _find_interactive_command(tokens: list[str]) -> str:
     return ""
 
 
-def _sudo_needs_password(tokens: list[str]) -> bool:
+def _sudo_issue(tokens: list[str]) -> str:
     for index, token in enumerate(tokens):
         if Path(token).name != "sudo":
             continue
-        if not _sudo_has_non_interactive_option(tokens[index + 1 :]):
-            return True
-    return False
+        non_interactive, mode_flag = _parse_sudo_options(tokens[index + 1 :])
+        if mode_flag:
+            return (
+                "shell_safety 拦截：sudo 的交互、编辑或状态模式不作为普通命令执行，"
+                "请改用明确的非交互命令。"
+            )
+        if not non_interactive:
+            return (
+                "shell_safety 拦截：sudo 可能等待密码，请改用 sudo -n，"
+                "让它在没有缓存时立即失败。"
+            )
+    return ""
 
 
-def _sudo_has_non_interactive_option(tokens: list[str]) -> bool:
+def _parse_sudo_options(tokens: list[str]) -> tuple[bool, str]:
+    non_interactive = False
     index = 0
     while index < len(tokens):
         token = tokens[index]
         if token == "--":
-            return False
+            break
         if not token.startswith("-") or token == "-":
-            return False
-        if token == "-n" or (
-            token.startswith("-")
-            and not token.startswith("--")
-            and "n" in token[1:]
-        ):
-            return True
-        if token in {"-u", "-g", "-p", "-C", "-D", "-R", "-T", "-h"}:
+            break
+        if token == "--non-interactive":
+            non_interactive = True
+            index += 1
+            continue
+        if token.startswith("--"):
+            option = token.split("=", 1)[0]
+            if option in _SUDO_MODE_LONG_FLAGS:
+                return non_interactive, option
+            if token in _SUDO_LONG_OPTIONS_WITH_VALUE:
+                index += 2
+                continue
+            index += 1
+            continue
+        has_non_interactive, consumes_next, mode_flag = _short_sudo_options(token)
+        non_interactive = non_interactive or has_non_interactive
+        if mode_flag:
+            return non_interactive, mode_flag
+        if consumes_next:
             index += 2
             continue
         index += 1
-    return False
+    return non_interactive, ""
 
 
 def _find_interactive_package_command(tokens: list[str]) -> str:
@@ -136,3 +185,18 @@ def _opens_system_editor(tokens: list[str]) -> bool:
         if candidate == "crontab" and tokens[index + 1] == "-e":
             return True
     return False
+
+
+def _short_sudo_options(token: str) -> tuple[bool, bool, str]:
+    has_non_interactive = False
+    cluster = token[1:]
+    for offset, option in enumerate(cluster):
+        if option in _SUDO_MODE_SHORT_FLAGS:
+            return has_non_interactive, False, option
+        if option == "n":
+            has_non_interactive = True
+            continue
+        if option not in _SUDO_SHORT_OPTIONS_WITH_VALUE:
+            continue
+        return has_non_interactive, offset + 1 == len(cluster), ""
+    return has_non_interactive, False, ""

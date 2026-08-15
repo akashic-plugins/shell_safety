@@ -146,6 +146,7 @@ async def test_manager_snapshot_authorizes_final_arguments(tmp_path: Path) -> No
         plugin_home / "shell_safety",
         ignore=shutil.ignore_patterns(
             ".git",
+            ".akashic-core",
             ".pytest_cache",
             "__pycache__",
         ),

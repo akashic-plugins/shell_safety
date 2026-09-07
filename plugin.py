@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import shlex
+from collections.abc import Mapping
 from pathlib import Path
 
-from agent.plugin_composition import Bail, Context
-from agent.tools.events import TOOL_EXECUTION_AUTHORIZE, ToolInput
+from agent.plugin_composition import Context
+from plugins.tools.api import Denied
+from plugins.tools.plugin import TOOLS
 
 INTERACTIVE_COMMANDS = {
     "vi",
@@ -52,10 +54,10 @@ _SUDO_MODE_LONG_FLAGS = frozenset(
 
 api_version = 3
 name = "shell_safety"
-version = "2.0.0"
+version = "3.0.0"
 desc = "阻止 shell 工具执行容易卡住的交互式命令"
 author = "Akashic"
-inject: tuple[()] = ()
+inject = (TOOLS,)
 
 
 async def apply(ctx: Context, config: object) -> None:
@@ -63,16 +65,17 @@ async def apply(ctx: Context, config: object) -> None:
 
     _ = config
 
-    def authorize(tool_input: ToolInput) -> Bail[str] | None:
-        if tool_input.tool_name != "shell":
-            return None
-        command = str(tool_input.arguments.get("command") or "").strip()
+    async def authorize(arguments: Mapping[str, object]) -> None:
+        command = str(arguments.get("command") or "").strip()
         if not command:
-            return None
+            return
         reason = deny_reason(command)
-        return Bail(reason) if reason else None
+        if reason:
+            raise Denied(reason)
 
-    _ = await ctx.on(TOOL_EXECUTION_AUTHORIZE, authorize)
+    _ = await ctx.require(TOOLS).register_authorize(
+        ctx, tool="shell", name="safety", authorize=authorize,
+    )
 
 
 def deny_reason(command: str) -> str:

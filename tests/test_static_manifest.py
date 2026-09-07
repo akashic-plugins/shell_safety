@@ -43,6 +43,6 @@ def test_static_manifest_matches_v3_module_without_importing() -> None:
 
     assert manifest["schema_version"] == 1
     assert manifest["name"] == module["name"] == "shell_safety"
-    assert manifest["version"] == module["version"] == "2.0.0"
+    assert manifest["version"] == module["version"] == "3.0.0"
     assert manifest["api_version"] == module["api_version"] == 3
     assert manifest["entrypoint"] == "plugin.py"

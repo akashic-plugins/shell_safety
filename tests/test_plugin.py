@@ -94,7 +94,7 @@ async def test_real_tools_execution_blocks_before_process_for_each_source_and_ru
     host, store, log, _artifacts, sources = environment(tmp_path)
     shutil.copytree(
         Path(__file__).parents[1], sources / "shell_safety",
-        ignore=shutil.ignore_patterns(".git", ".pytest_cache", "__pycache__", "tests"),
+        ignore=shutil.ignore_patterns(".git", ".akashic-core", ".plugin-contracts", ".venv", "node_modules", ".pytest_cache", "__pycache__", "tests"),
     )
     sentinel_dir = tmp_path / "sentinel-bin"
     sentinel_dir.mkdir()
@@ -156,7 +156,7 @@ async def test_abandon_before_start_keeps_dangerous_process_unstarted(tmp_path: 
     host, store, log, _artifacts, sources = environment(tmp_path)
     shutil.copytree(
         Path(__file__).parents[1], sources / "shell_safety",
-        ignore=shutil.ignore_patterns(".git", ".pytest_cache", "__pycache__", "tests"),
+        ignore=shutil.ignore_patterns(".git", ".akashic-core", ".plugin-contracts", ".venv", "node_modules", ".pytest_cache", "__pycache__", "tests"),
     )
     try:
         await host.load_all()

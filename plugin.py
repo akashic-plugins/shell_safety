@@ -7,6 +7,7 @@ from pathlib import Path
 from agent.plugin_composition import Context
 from plugins.tools.api import Denied
 from plugins.tools.plugin import TOOLS
+from plugins.standard_tools.plugin import STANDARD_TOOLS
 
 INTERACTIVE_COMMANDS = {
     "vi",
@@ -57,7 +58,7 @@ name = "shell_safety"
 version = "3.0.0"
 desc = "阻止 shell 工具执行容易卡住的交互式命令"
 author = "Akashic"
-inject = (TOOLS,)
+inject = (TOOLS, STANDARD_TOOLS)
 
 
 async def apply(ctx: Context, config: object) -> None:
@@ -74,7 +75,7 @@ async def apply(ctx: Context, config: object) -> None:
             raise Denied(reason)
 
     _ = await ctx.require(TOOLS).register_authorize(
-        ctx, tool="shell", name="safety", authorize=authorize,
+        ctx, tool=ctx.require(STANDARD_TOOLS).select("shell"), name="safety", authorize=authorize,
     )
 
 

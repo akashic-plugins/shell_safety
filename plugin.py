@@ -5,9 +5,8 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from agent.plugin_composition import Context
-from plugins.tools.api import Denied
-from plugins.tools.plugin import TOOLS
-from plugins.standard_tools.plugin import STANDARD_TOOLS
+
+from ._tool_contract import STANDARD_TOOLS, TOOLS
 
 INTERACTIVE_COMMANDS = {
     "vi",
@@ -66,13 +65,12 @@ async def apply(ctx: Context, config: object) -> None:
 
     _ = config
 
-    async def authorize(arguments: Mapping[str, object]) -> None:
+    async def authorize(arguments: Mapping[str, object]) -> str | None:
         command = str(arguments.get("command") or "").strip()
         if not command:
-            return
+            return None
         reason = deny_reason(command)
-        if reason:
-            raise Denied(reason)
+        return reason or None
 
     _ = await ctx.require(TOOLS).register_authorize(
         ctx, tool=ctx.require(STANDARD_TOOLS).select("shell"), name="safety", authorize=authorize,

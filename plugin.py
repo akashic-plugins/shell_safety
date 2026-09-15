@@ -60,10 +60,9 @@ author = "Akashic"
 inject = (TOOLS, STANDARD_TOOLS)
 
 
-async def apply(ctx: Context, config: object) -> None:
+async def apply(ctx: Context) -> None:
     """Register final-argument shell authorization without owning execution."""
 
-    _ = config
 
     async def authorize(arguments: Mapping[str, object]) -> str | None:
         command = str(arguments.get("command") or "").strip()

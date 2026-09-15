@@ -33,6 +33,7 @@ shell_safety = _load_plugin()
 from agent.plugin_composition.bindings import Bindings
 from agent.plugins.composable import ComposablePlugin
 from agent.plugins.snapshot import lease_runtime_snapshot
+from agent.plugins.static_manifest import load_static_plugin_manifest
 from agent.plugin_composition.messages import OWNER_STATE
 from agent.plugin_composition.tasks import TASKS
 from plugins.content.plugin import check_text
@@ -45,7 +46,9 @@ from tests.test_standard_tools import environment
 
 
 def test_v3_namespace_is_loadable() -> None:
-    loaded = ComposablePlugin.from_module(shell_safety)
+    loaded = ComposablePlugin.from_module(
+        shell_safety, load_static_plugin_manifest(Path(__file__).resolve().parents[1]),
+    )
     assert loaded.name == "shell_safety"
     assert loaded.version == "3.0.0"
     assert loaded.inject == (TOOLS, STANDARD_TOOLS)
@@ -132,8 +135,8 @@ async def test_real_tools_execution_blocks_before_process_for_each_source_and_ru
 
     try:
         await host.load_all()
-        bindings = Bindings(log, host._archive, host.open_binding)
         async with lease_runtime_snapshot(host.snapshot_store) as snapshot:
+            bindings = Bindings(log, host._archive, snapshot.composition_root)
             catalog = snapshot.composition_root.context.require(TOOLS)
             binding = catalog.bind(snapshot.composition_root.context.require(STANDARD_TOOLS).select("shell"), bindings, configuration={
                 "working_dir": str(tmp_path), "allow_network": False,
@@ -181,8 +184,8 @@ async def test_abandon_before_start_keeps_dangerous_process_unstarted(tmp_path: 
     )
     try:
         await host.load_all()
-        bindings = Bindings(log, host._archive, host.open_binding)
         async with lease_runtime_snapshot(host.snapshot_store) as snapshot:
+            bindings = Bindings(log, host._archive, snapshot.composition_root)
             catalog = snapshot.composition_root.context.require(TOOLS)
             binding = catalog.bind(snapshot.composition_root.context.require(STANDARD_TOOLS).select("shell"), bindings)
             reply = _reply(

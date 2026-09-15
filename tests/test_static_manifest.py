@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-import tomllib
+
+from agent.plugins.static_manifest import load_static_plugin_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,13 +37,9 @@ def _module_identity(path: Path) -> dict[str, object]:
 def test_static_manifest_matches_v3_module_without_importing() -> None:
     """Keep static identity aligned with the plugin source namespace."""
 
-    manifest = tomllib.loads(
-        (ROOT / "akashic.plugin.toml").read_text(encoding="utf-8")
-    )
+    manifest = load_static_plugin_manifest(ROOT)
     module = _module_identity(ROOT / "plugin.py")
 
-    assert manifest["schema_version"] == 1
-    assert manifest["name"] == module["name"] == "shell_safety"
-    assert manifest["version"] == module["version"] == "3.0.0"
-    assert manifest["api_version"] == module["api_version"] == 3
-    assert manifest["entrypoint"] == "plugin.py"
+    assert manifest.name == module["name"] == "shell_safety"
+    assert manifest.version == module["version"] == "3.0.0"
+    assert manifest.api_version == module["api_version"] == 3

@@ -30,9 +30,8 @@ def _load_plugin():
 
 
 shell_safety = _load_plugin()
-from agent.plugin_composition.bindings import Bindings
+from agent.plugin_composition.bindings import BINDINGS
 from agent.plugins.composable import ComposablePlugin
-from agent.plugins.snapshot import lease_runtime_snapshot
 from agent.plugins.static_manifest import load_static_plugin_manifest
 from agent.plugin_composition.messages import OWNER_STATE
 from agent.plugin_composition.tasks import TASKS
@@ -135,10 +134,14 @@ async def test_real_tools_execution_blocks_before_process_for_each_source_and_ru
 
     try:
         await host.load_all()
-        async with lease_runtime_snapshot(host.snapshot_store) as snapshot:
-            bindings = Bindings(log, host._archive, snapshot.composition_root)
-            catalog = snapshot.composition_root.context.require(TOOLS)
-            binding = catalog.bind(snapshot.composition_root.context.require(STANDARD_TOOLS).select("shell"), bindings, configuration={
+        root = host.live_root
+        assert root is not None
+        tool_generation = host.generation("tools")
+        assert tool_generation is not None and tool_generation.fiber is not None
+        async with tool_generation.fiber.context.runtime_scope():
+            bindings = root.context.require(BINDINGS)
+            catalog = root.context.require(TOOLS)
+            binding = catalog.bind(root.context.require(STANDARD_TOOLS).select("shell"), bindings, configuration={
                 "working_dir": str(tmp_path), "allow_network": False,
             })
             assert bindings.describe(binding, TOOLS)["authorize"] == "safety"
@@ -162,13 +165,13 @@ async def test_real_tools_execution_blocks_before_process_for_each_source_and_ru
                 "command": "printf SAFE", "description": "safe fixture", "login": False,
             })
 
-        assert conversation.outcome == scheduler.outcome == "denied"
-        assert "sudo -n" in cast(str, conversation.parts[0].value)
-        assert repeated == conversation
-        assert not marker.exists()
-        assert len(caller_arguments) == 1
-        assert safe.outcome == "success"
-        assert "SAFE" in json.loads(cast(str, safe.parts[0].value))["output"]
+            assert conversation.outcome == scheduler.outcome == "denied"
+            assert "sudo -n" in cast(str, conversation.parts[0].value)
+            assert repeated == conversation
+            assert not marker.exists()
+            assert len(caller_arguments) == 1
+            assert safe.outcome == "success"
+            assert "SAFE" in json.loads(cast(str, safe.parts[0].value))["output"]
     finally:
         await host.terminate_all()
         log.close()
@@ -184,10 +187,14 @@ async def test_abandon_before_start_keeps_dangerous_process_unstarted(tmp_path: 
     )
     try:
         await host.load_all()
-        async with lease_runtime_snapshot(host.snapshot_store) as snapshot:
-            bindings = Bindings(log, host._archive, snapshot.composition_root)
-            catalog = snapshot.composition_root.context.require(TOOLS)
-            binding = catalog.bind(snapshot.composition_root.context.require(STANDARD_TOOLS).select("shell"), bindings)
+        root = host.live_root
+        assert root is not None
+        tool_generation = host.generation("tools")
+        assert tool_generation is not None and tool_generation.fiber is not None
+        async with tool_generation.fiber.context.runtime_scope():
+            bindings = root.context.require(BINDINGS)
+            catalog = root.context.require(TOOLS)
+            binding = catalog.bind(root.context.require(STANDARD_TOOLS).select("shell"), bindings)
             reply = _reply(
                 log, binding, session="abandon", source="conversation",
                 identity="abandoned-danger", command="sudo pacman -Syu --noconfirm",
@@ -199,7 +206,7 @@ async def test_abandon_before_start_keeps_dangerous_process_unstarted(tmp_path: 
             owner = catalog._ctx.require(OWNER_STATE).open(catalog._ctx)
             tasks = catalog._ctx.require(TASKS).open(catalog._ctx)
             result = await abandon_call(owner, tasks, reply, task_key="effects")
-        assert result.outcome == "denied"
+            assert result.outcome == "denied"
     finally:
         await host.terminate_all()
         log.close()

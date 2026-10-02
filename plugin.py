@@ -6,7 +6,7 @@ from pathlib import Path
 
 from agent.plugin_composition import Context
 
-from ._tool_contract import STANDARD_TOOLS, TOOLS
+from agent.plugin_contracts.tools import TOOLS, tool_key
 
 INTERACTIVE_COMMANDS = {
     "vi",
@@ -57,13 +57,12 @@ name = "shell_safety"
 version = "3.0.0"
 desc = "阻止 shell 工具执行容易卡住的交互式命令"
 author = "Akashic"
-inject = (TOOLS, STANDARD_TOOLS)
+inject = (TOOLS, tool_key("shell"))
 
 
-async def apply(ctx: Context, config: object) -> None:
+async def apply(ctx: Context) -> None:
     """Register final-argument shell authorization without owning execution."""
 
-    _ = config
 
     async def authorize(arguments: Mapping[str, object]) -> str | None:
         command = str(arguments.get("command") or "").strip()
@@ -73,7 +72,7 @@ async def apply(ctx: Context, config: object) -> None:
         return reason or None
 
     _ = await ctx.require(TOOLS).register_authorize(
-        ctx, tool=ctx.require(STANDARD_TOOLS).select("shell"), name="safety", authorize=authorize,
+        ctx, tool=ctx.require(tool_key("shell")), name="safety", authorize=authorize,
     )
 
 

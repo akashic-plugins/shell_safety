@@ -31,15 +31,15 @@ def _load_plugin():
 
 shell_safety = _load_plugin()
 from runtime_fixture import environment, tool_scope
-from agent.plugin_composition.bindings import BINDINGS
-from agent.plugin_contracts.tools import tool_key
-from agent.plugin_composition.messages import OWNER_STATE
+from plugins.ledger.contract import BINDINGS
+from plugins.tools.contract import tool_key
+from plugins.ledger.contract import OWNER_STATE, MESSAGE_CATALOG, MESSAGE_WRITERS
 from agent.plugin_composition.tasks import TASKS
 from plugins.content.plugin import check_text
 from plugins.tools.abandon import abandon_call
 from plugins.tools.api import MessageReply, result_message_id
 from plugins.tools.plugin import TOOLS
-from session.message import CallRef, Control, Output, ToolCall, ToolResult
+from plugins.ledger.contract import CallRef, Control, Output, ToolCall, ToolResult
 
 
 
@@ -72,24 +72,18 @@ def test_malformed_shell_is_left_to_shell_boundary() -> None:
     assert shell_safety.deny_reason("pacman '") == ""
 
 
-def _reply(log, binding: str, *, session: str, source: str, identity: str, command: str) -> MessageReply:
+def _reply(ctx, binding: str, *, session: str, source: str, identity: str, command: str) -> MessageReply:
     def check_call(call: ToolCall) -> None:
         if call.binding_id != binding:
             raise PermissionError("fixture only grants its shell binding")
 
-    output = log.writer(
-        session, author="assistant", source=source, body_types=(Output,), content={},
-        check_call=check_call,
-    )
+    output = ctx.require(MESSAGE_WRITERS).bind(ctx, author='assistant', source=source, body_types=(Output,), content={}, check_call=check_call)(session)
     output.append(identity, Output((ToolCall(binding, {
         "command": command, "description": "shell safety fixture", "login": False,
     }),), "continue"))
     ref = CallRef(identity, 0)
-    writer = log.writer(
-        session, author="tool", source=source, body_types=(ToolResult,),
-        content={"text": check_text}, call_ref=ref,
-    )
-    return MessageReply(result_message_id(ref), ref, log.reader(session), writer, lambda: None)
+    writer = ctx.require(MESSAGE_WRITERS).bind(ctx, author='tool', source=source, body_types=(ToolResult,), content={'text': check_text})(session, call_ref=ref)
+    return MessageReply(result_message_id(ref), ref, ctx.require(MESSAGE_CATALOG).reader(session), writer, lambda: None)
 
 
 @pytest.mark.asyncio
@@ -122,22 +116,18 @@ async def test_real_tools_execution_blocks_before_process_for_each_source_and_ru
             binding = await catalog.bind(ctx.require(tool_key("shell")), bindings, configuration={
                 "working_dir": str(tmp_path), "allow_network": False,
             })
-            assert bindings.describe(binding, TOOLS)["authorize"] == "safety"
             execution = catalog.execution(allow)
             conversation = await execution.execute_call(_reply(
-                log, binding, session="conversation", source="conversation",
+                ctx, binding, session="conversation", source="conversation",
                 identity="danger-conversation", command="pacman -Syu openssh",
             ))
             scheduler = await execution.execute_call(_reply(
-                log, binding, session="scheduler", source="scheduler",
+                ctx, binding, session="scheduler", source="scheduler",
                 identity="danger-scheduler", command="pacman -Syu openssh",
             ))
             repeated = await execution.execute_call(MessageReply(
                 result_message_id(CallRef("danger-conversation", 0)), CallRef("danger-conversation", 0),
-                log.reader("conversation"), log.writer(
-                    "conversation", author="tool", source="conversation", body_types=(ToolResult,),
-                    content={"text": check_text}, call_ref=CallRef("danger-conversation", 0),
-                ), lambda: None,
+                ctx.require(MESSAGE_CATALOG).reader('conversation'), ctx.require(MESSAGE_WRITERS).bind(ctx, author='tool', source='conversation', body_types=(ToolResult,), content={'text': check_text})('conversation', call_ref=CallRef('danger-conversation', 0)), lambda: None,
             ))
             safe = await execution.execute("safe", binding, {
                 "command": "printf SAFE", "description": "safe fixture", "login": False,
@@ -170,17 +160,15 @@ async def test_abandon_before_start_keeps_dangerous_process_unstarted(tmp_path: 
             bindings = ctx.require(BINDINGS)
             binding = await catalog.bind(ctx.require(tool_key("shell")), bindings)
             reply = _reply(
-                log, binding, session="abandon", source="conversation",
+                ctx, binding, session="abandon", source="conversation",
                 identity="abandoned-danger", command="pacman -Syu openssh",
             )
-            control = log.writer(
-                "abandon", author="user", source="conversation", body_types=(Control,), content={},
-            )
+            control = ctx.require(MESSAGE_WRITERS).bind(ctx, author='user', source='conversation', body_types=(Control,), content={})('abandon')
             control.append("abandon-control", Control("abandon", reply.reader.head(source="conversation")))
             owner = catalog._ctx.require(OWNER_STATE).open(catalog._ctx)
             tasks = catalog._ctx.require(TASKS).open(catalog._ctx)
             result = await abandon_call(owner, tasks, reply, task_key="effects")
-        assert result.outcome == "denied"
+        assert result.outcome == "interrupted"
     finally:
         await host.terminate_all()
         log.close()

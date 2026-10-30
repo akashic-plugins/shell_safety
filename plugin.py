@@ -6,7 +6,7 @@ from pathlib import Path
 
 from agent.plugin_composition import Context
 
-from agent.plugin_contracts.tools import TOOLS, tool_key
+from plugins.tools.contract import TOOLS, tool_key
 
 INTERACTIVE_COMMANDS = {
     "vi",
@@ -27,7 +27,7 @@ PACKAGE_WRITE_OPTIONS = {
 
 api_version = 3
 name = "shell_safety"
-version = "3.0.1"
+version = "3.0.2"
 desc = "阻止 shell 工具执行容易卡住的交互式命令"
 author = "Akashic"
 inject = (TOOLS, tool_key("shell"))

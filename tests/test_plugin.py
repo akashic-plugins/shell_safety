@@ -44,12 +44,14 @@ from session.message import CallRef, Control, Output, ToolCall, ToolResult
 
 
 
-def test_blocks_sudo_without_non_interactive() -> None:
-    assert "sudo -n" in shell_safety.deny_reason("sudo pacman -Syu --noconfirm")
+def test_root_wrapper_is_not_gated() -> None:
+    # 3.0.1 起不再审查提权参数：能不能成功交给 sudoers 判定，插件只负责防卡死。
+    assert shell_safety.deny_reason("sudo pacman -Syu --noconfirm") == ""
+    assert shell_safety.deny_reason("sudo systemctl restart akashic-core") == ""
 
 
 def test_blocks_interactive_editor() -> None:
-    assert "vim" in shell_safety.deny_reason("sudo -n vim /etc/example.service")
+    assert "vim" in shell_safety.deny_reason("vim /etc/example.service")
 
 
 def test_blocks_package_write_without_noconfirm() -> None:
@@ -62,23 +64,12 @@ def test_blocks_system_editor() -> None:
 
 
 def test_allows_non_interactive_write() -> None:
-    assert shell_safety.deny_reason("sudo -n pacman -Syu --noconfirm") == ""
-    assert shell_safety.deny_reason("sudo -nE pacman -Syu --noconfirm") == ""
-    assert shell_safety.deny_reason("sudo -nuroot pacman -Syu --noconfirm") == ""
-    assert shell_safety.deny_reason("sudo -n --preserve-env=HOME pacman -Syu --noconfirm") == ""
-
-
-def test_sudo_option_value_containing_n_is_not_non_interactive() -> None:
-    assert "sudo -n" in shell_safety.deny_reason("sudo -unroot pacman -Syu --noconfirm")
-
-
-@pytest.mark.parametrize("mode_flag", ["-e", "-l", "-s", "-i", "-v", "-h"])
-def test_sudo_mode_flag_is_denied_after_non_interactive(mode_flag: str) -> None:
-    assert "不作为普通命令执行" in shell_safety.deny_reason(f"sudo -n {mode_flag} rm /tmp/a.txt")
+    assert shell_safety.deny_reason("pacman -Syu --noconfirm") == ""
+    assert shell_safety.deny_reason("yay -S --noconfirm package") == ""
 
 
 def test_malformed_shell_is_left_to_shell_boundary() -> None:
-    assert shell_safety.deny_reason("sudo '") == ""
+    assert shell_safety.deny_reason("pacman '") == ""
 
 
 def _reply(log, binding: str, *, session: str, source: str, identity: str, command: str) -> MessageReply:
@@ -113,7 +104,7 @@ async def test_real_tools_execution_blocks_before_process_for_each_source_and_ru
     sentinel_dir = tmp_path / "sentinel-bin"
     sentinel_dir.mkdir()
     marker = tmp_path / "danger-started"
-    sentinel = sentinel_dir / "sudo"
+    sentinel = sentinel_dir / "pacman"
     sentinel.write_text(f"#!/bin/sh\nprintf started > {marker}\n", encoding="utf-8")
     sentinel.chmod(0o755)
     monkeypatch.setenv("PATH", f"{sentinel_dir}:{os.environ['PATH']}")
@@ -135,11 +126,11 @@ async def test_real_tools_execution_blocks_before_process_for_each_source_and_ru
             execution = catalog.execution(allow)
             conversation = await execution.execute_call(_reply(
                 log, binding, session="conversation", source="conversation",
-                identity="danger-conversation", command="sudo pacman -Syu --noconfirm",
+                identity="danger-conversation", command="pacman -Syu openssh",
             ))
             scheduler = await execution.execute_call(_reply(
                 log, binding, session="scheduler", source="scheduler",
-                identity="danger-scheduler", command="sudo pacman -Syu --noconfirm",
+                identity="danger-scheduler", command="pacman -Syu openssh",
             ))
             repeated = await execution.execute_call(MessageReply(
                 result_message_id(CallRef("danger-conversation", 0)), CallRef("danger-conversation", 0),
@@ -153,7 +144,7 @@ async def test_real_tools_execution_blocks_before_process_for_each_source_and_ru
             })
 
         assert conversation.outcome == scheduler.outcome == "denied"
-        assert "sudo -n" in cast(str, conversation.parts[0].value)
+        assert "--noconfirm" in cast(str, conversation.parts[0].value)
         assert repeated == conversation
         assert not marker.exists()
         assert len(caller_arguments) == 1
@@ -180,7 +171,7 @@ async def test_abandon_before_start_keeps_dangerous_process_unstarted(tmp_path: 
             binding = await catalog.bind(ctx.require(tool_key("shell")), bindings)
             reply = _reply(
                 log, binding, session="abandon", source="conversation",
-                identity="abandoned-danger", command="sudo pacman -Syu --noconfirm",
+                identity="abandoned-danger", command="pacman -Syu openssh",
             )
             control = log.writer(
                 "abandon", author="user", source="conversation", body_types=(Control,), content={},
